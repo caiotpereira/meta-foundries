@@ -1,7 +1,5 @@
 header:
   version: 14
-  includes:
-    - ci/include/distro.yml
 
 target: core-image-full-cmdline
 
@@ -37,7 +35,16 @@ repos:
     layers:
       .:
 
+  meta-virtualization:
+    url: https://git.yoctoproject.org/meta-virtualization
+    branch: master
+    layers:
+      .:
+
 local_conf_header:
+  virtualization: |
+    SKIP_META_VIRT_SANITY_CHECK = "1"
+
   base: |
     CONF_VERSION = "2"
     # Add size metadata to OSTree commit objects, allowing update size estimation

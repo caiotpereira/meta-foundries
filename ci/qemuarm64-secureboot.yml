@@ -2,6 +2,7 @@ header:
   version: 14
   includes:
     - ci/include/base.yml
+    - ci/include/nodistro.yml
 
 machine: qemuarm64-secureboot
 

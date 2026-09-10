@@ -20,12 +20,6 @@ repos:
     layers:
       .:
 
-  meta-virtualization:
-    url: https://git.yoctoproject.org/meta-virtualization
-    branch: master
-    layers:
-      .:
-
   meta-selinux:
     url: https://git.yoctoproject.org/meta-selinux
     branch: master
@@ -38,7 +32,3 @@ repos:
     layers:
       .:
       meta-tpm:
-
-local_conf_header:
-  virtualization: |
-    SKIP_META_VIRT_SANITY_CHECK = "1"
