@@ -15,3 +15,11 @@ repos:
       meta-arm:
       meta-arm-bsp:
       meta-arm-toolchain:
+
+local_conf_header:
+  sota-boot: |
+    OSTREE_BOOTLOADER = "grub"
+    EFI_PROVIDER = "grub-efi"
+    WKS_FILE:sota = "efiimage-sota.wks.in"
+    IMAGE_BOOT_FILES:sota = ""
+    OSTREE_KERNEL_ARGS = "console=ttyAMA0,115200 ${OSTREE_KERNEL_ARGS_COMMON}"
