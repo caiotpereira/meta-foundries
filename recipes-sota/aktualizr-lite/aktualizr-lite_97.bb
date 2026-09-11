@@ -39,11 +39,9 @@ EXTRA_OECMAKE += "-DAKTUALIZR_VERSION=${@d.getVar('SRCREV')[:7]}"
 SYSTEMD_SERVICE:${PN} = "aktualizr-lite.service"
 
 COMPOSE_HTTP_TIMEOUT ?= "60"
-DOCKER_CRED_HELPER_CFG ?= "${libdir}/docker/config.json"
 
 do_compile:append() {
     sed -e 's|@@COMPOSE_HTTP_TIMEOUT@@|${COMPOSE_HTTP_TIMEOUT}|g' \
-        -e 's|@@DOCKER_CRED_HELPER_CFG@@|${DOCKER_CRED_HELPER_CFG}|g' \
         ${UNPACKDIR}/aktualizr-lite.service.in > ${UNPACKDIR}/aktualizr-lite.service
 }
 
