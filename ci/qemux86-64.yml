@@ -7,5 +7,14 @@ header:
 machine: qemux86-64
 
 local_conf_header:
+  sota-boot: |
+    OSTREE_BOOTLOADER = "grub"
+    EFI_PROVIDER = "grub-efi"
+    WKS_FILE:sota = "efiimage-sota.wks.in"
+    IMAGE_BOOT_FILES:sota = ""
+    IMAGE_FSTYPES:append:pn-core-image-full-cmdline = " wic wic.qcow2"
+    OSTREE_KERNEL_ARGS = "console=${KERNEL_CONSOLE} ${OSTREE_KERNEL_ARGS_COMMON}"
+    EXTRA_IMAGEDEPENDS:append = " ovmf"
+
   rootfs-space: |
     IMAGE_ROOTFS_EXTRA_SPACE = "1048576"
