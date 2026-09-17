@@ -1,0 +1,174 @@
+From c80297156c0fbd3419bb98d7bbef4e706251bfc0 Mon Sep 17 00:00:00 2001
+From: Mike Sul <mike.sul@foundries.io>
+Date: Fri, 22 Sep 2023 12:49:07 +0200
+Subject: [PATCH] tarexport: Optimize image loading on local host
+
+This commit augments the image load manifest by introducing
+an additional field that allows specifying the image layer root
+directory on a local host.
+
+When this root directory is provided in the manifest, the Docker image
+loading process will read layer data directly from that location,
+optimizing the operation.
+
+In cases where the layer root directory is not specified in
+the manifest, the default behavior remains intact. The image layers
+will be transferred via the input TAR stream, temporarily stored in
+the temporary directory (`/var/lib/docker/tmp/docker-import-*`), and
+subsequently read from the temporary location during the layer loading
+process into the Docker store.
+
+Also, this change enables setting the digest reference to an image in
+addition to the tag one, as well as it corrects the reference printing
+of a loaded image.
+
+Upstream-Status: Inappropriate [lmp specific]
+
+Signed-off-by: Mike <mike.sul@foundries.io>
+Signed-off-by: Jose Quaresma <jose.quaresma@foundries.io>
+Signed-off-by: Ricardo Salveti <ricardo.salveti@oss.qualcomm.com>
+---
+ daemon/internal/image/tarexport/load.go      | 56 +++++++++++++-------
+ daemon/internal/image/tarexport/tarexport.go |  1 +
+ 2 files changed, 37 insertions(+), 20 deletions(-)
+
+diff --git a/daemon/internal/image/tarexport/load.go b/daemon/internal/image/tarexport/load.go
+index 285100b..e42ec1d 100644
+--- a/daemon/internal/image/tarexport/load.go
++++ b/daemon/internal/image/tarexport/load.go
+@@ -27,6 +27,7 @@ import (
+ 	"github.com/moby/moby/v2/daemon/internal/stringid"
+ 	"github.com/moby/sys/symlink"
+ 	"github.com/opencontainers/go-digest"
++	"github.com/sirupsen/logrus"
+ )
+ 
+ func (l *tarexporter) Load(ctx context.Context, inTar io.ReadCloser, outStream io.Writer, quiet bool) (outErr error) {
+@@ -78,8 +79,6 @@ func (l *tarexporter) Load(ctx context.Context, inTar io.ReadCloser, outStream i
+ 	}
+ 
+ 	var parentLinks []parentLink
+-	var imageIDsStr strings.Builder
+-	var imageRefCount int
+ 
+ 	for _, m := range manifest {
+ 		select {
+@@ -87,7 +86,7 @@ func (l *tarexporter) Load(ctx context.Context, inTar io.ReadCloser, outStream i
+ 			return ctx.Err()
+ 		default:
+ 		}
+-		configPath, err := safePath(tmpDir, m.Config)
++		configPath, err := safePathWithTmp(m.LayersRoot, tmpDir, m.Config)
+ 		if err != nil {
+ 			return err
+ 		}
+@@ -118,7 +117,7 @@ func (l *tarexporter) Load(ctx context.Context, inTar io.ReadCloser, outStream i
+ 				return ctx.Err()
+ 			default:
+ 			}
+-			layerPath, err := safePath(tmpDir, m.Layers[i])
++			layerPath, err := safePathWithTmp(m.LayersRoot, tmpDir, m.Layers[i])
+ 			if err != nil {
+ 				return err
+ 			}
+@@ -142,25 +141,30 @@ func (l *tarexporter) Load(ctx context.Context, inTar io.ReadCloser, outStream i
+ 		if err != nil {
+ 			return err
+ 		}
+-		fmt.Fprintf(&imageIDsStr, "Loaded image ID: %s\n", imgID)
+-
+-		imageRefCount = 0
++		var imageRefs []string
+ 		for _, repoTag := range m.RepoTags {
+ 			named, err := reference.ParseNormalizedNamed(repoTag)
+ 			if err != nil {
+-				return err
++				return fmt.Errorf("invalid image reference: %s", repoTag)
+ 			}
+-			ref, ok := named.(reference.NamedTagged)
+-			if !ok {
+-				return fmt.Errorf("invalid tag %q", repoTag)
++			if refSetErr := l.setLoadedNamedRef(named, imgID.Digest(), outStream); refSetErr == nil {
++				imageRefs = append(imageRefs, reference.FamiliarString(named))
++			} else {
++				logrus.Warnf("failed to set loaded image reference: %s", refSetErr.Error())
+ 			}
+-			l.setLoadedTag(ref, imgID.Digest(), outStream)
+-			fmt.Fprintf(outStream, "Loaded image: %s\n", reference.FamiliarString(ref))
+-			imageRefCount++
+ 		}
+ 
+ 		parentLinks = append(parentLinks, parentLink{imgID, m.Parent})
+ 		l.loggerImgEvent.LogImageEvent(ctx, imgID.String(), imgID.String(), events.ActionLoad)
++		var imageIDsStr string
++		if len(imageRefs) > 0 {
++			imageIDsStr = fmt.Sprintf("Image loaded; refs: %s", strings.Join(imageRefs, ", "))
++		} else {
++			imageIDsStr = fmt.Sprintf("Image loaded; ID: %s", imgID)
++		}
++		if _, writeErr := outStream.Write([]byte(imageIDsStr)); writeErr != nil {
++			logrus.Warnf("failed to output loaded image IDs: %s", writeErr.Error())
++		}
+ 	}
+ 
+ 	for _, p := range validatedParentLinks(parentLinks) {
+@@ -171,10 +175,6 @@ func (l *tarexporter) Load(ctx context.Context, inTar io.ReadCloser, outStream i
+ 		}
+ 	}
+ 
+-	if imageRefCount == 0 {
+-		outStream.Write([]byte(imageIDsStr.String()))
+-	}
+-
+ 	return nil
+ }
+ 
+@@ -244,18 +244,34 @@ func (l *tarexporter) loadLayer(ctx context.Context, filename string, rootFS ima
+ 	return l.lss.Register(inflatedLayerData, rootFS.ChainID())
+ }
+ 
+-func (l *tarexporter) setLoadedTag(ref reference.Named, imgID digest.Digest, outStream io.Writer) error {
++func (l *tarexporter) setLoadedNamedRef(ref reference.Named, imgID digest.Digest, outStream io.Writer) error {
+ 	if prevID, err := l.rs.Get(ref); err == nil && prevID != imgID {
+ 		fmt.Fprintf(outStream, "The image %s already exists, renaming the old one with ID %s to empty string\n", reference.FamiliarString(ref), string(prevID)) // todo: this message is wrong in case of multiple tags
+ 	}
+ 
+-	return l.rs.AddTag(ref, imgID, true)
++	switch specificRef := ref.(type) {
++	case reference.NamedTagged:
++		l.rs.AddTag(specificRef, imgID, true)
++	case reference.Canonical:
++		l.rs.AddDigest(specificRef, imgID, true)
++	default:
++		return fmt.Errorf("unsupported image reference type: %s", ref.String())
++	}
++	return nil
+ }
+ 
+ func safePath(base, path string) (string, error) {
+ 	return symlink.FollowSymlinkInScope(filepath.Join(base, path), base)
+ }
+ 
++func safePathWithTmp(rootDir, tmp, path string) (string, error) {
++	root := rootDir
++	if len(root) == 0 {
++		root = tmp
++	}
++	return symlink.FollowSymlinkInScope(filepath.Join(root, path), root)
++}
++
+ type parentLink struct {
+ 	id, parentID image.ID
+ }
+diff --git a/daemon/internal/image/tarexport/tarexport.go b/daemon/internal/image/tarexport/tarexport.go
+index 631b33f..974a2d2 100644
+--- a/daemon/internal/image/tarexport/tarexport.go
++++ b/daemon/internal/image/tarexport/tarexport.go
+@@ -23,6 +23,7 @@ type manifestItem struct {
+ 	Layers       []string
+ 	Parent       image.ID                                 `json:",omitempty"`
+ 	LayerSources map[layer.DiffID]distribution.Descriptor `json:",omitempty"`
++	LayersRoot   string                                   `json:",omitempty"`
+ }
+ 
+ type tarexporter struct {
