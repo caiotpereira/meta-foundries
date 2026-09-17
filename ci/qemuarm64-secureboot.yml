@@ -23,3 +23,6 @@ local_conf_header:
     WKS_FILE:sota = "efiimage-sota.wks.in"
     IMAGE_BOOT_FILES:sota = ""
     OSTREE_KERNEL_ARGS = "console=ttyAMA0,115200 ${OSTREE_KERNEL_ARGS_COMMON}"
+
+  rootfs-space: |
+    IMAGE_ROOTFS_EXTRA_SPACE = "1048576"
