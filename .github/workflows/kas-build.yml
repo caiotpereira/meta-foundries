@@ -125,7 +125,10 @@ jobs:
           uploads_dir=./uploads/${{ matrix.target }}
           mkdir -p "$uploads_dir"
           # secureboot emits optee/ and trusted-firmware-a/ subdirs, so recurse.
-          cp -v -r --dereference "$deploy_dir"/* kas-build.yml "$uploads_dir"/
+          # ostree_repo is thousands of loose objects, one upload each.
+          find "$deploy_dir" -mindepth 1 -maxdepth 1 ! -name ostree_repo \
+            -exec cp -v -r --dereference {} "$uploads_dir"/ \;
+          cp -v kas-build.yml "$uploads_dir"/
 
       - name: Set S3 object tag
         run: |
