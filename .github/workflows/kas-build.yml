@@ -29,7 +29,7 @@ jobs:
           - uno-q
     name: kas-setup ${{ matrix.target }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
@@ -58,7 +58,7 @@ jobs:
           fi
 
       - name: Upload kas-container
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: kas-container-${{ matrix.target }}
           path: ${{ env.KAS_CONTAINER }}
@@ -77,12 +77,12 @@ jobs:
           - uno-q
     name: build ${{ matrix.target }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
       - name: Download kas-container
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: kas-container-${{ matrix.target }}
           path: ${{ runner.temp }}
@@ -110,7 +110,7 @@ jobs:
           "$KAS_CONTAINER" dump --resolve-env --resolve-local --resolve-refs "$KAS_YAMLS" > kas-build.yml
 
       - name: Upload resolved kas build yaml
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: kas-build-${{ matrix.target }}
           path: kas-build.yml
@@ -141,7 +141,7 @@ jobs:
           fi
 
       - name: Upload build artifacts to S3 bucket
-        uses: qualcomm-linux/upload-private-artifact-action@aws-v5
+        uses: qualcomm-linux/upload-private-artifact-action@3d4dd0fac6e01a66d2df1502e4189676202c8ae3 # aws-v5
         with:
           path: ./uploads
           destination: ${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ matrix.target }}/${{ github.run_id }}-${{ github.run_attempt }}/
