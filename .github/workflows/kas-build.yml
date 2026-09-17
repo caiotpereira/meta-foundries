@@ -8,6 +8,8 @@ on:
 
 env:
   KAS_CLONE_DEPTH: 1
+  # kas 5.5, the image the script below is taken from.
+  KAS_CONTAINER_IMAGE: ghcr.io/siemens/kas/kas@sha256:4b210b0be3c887875973c4f4c35470b4ecf3edd2346c9de1bdd33feae5b86e94
   # Shared cache mount on the self-hosted runners; holds the downloads
   # and sstate-cache folders so DL_DIR and SSTATE_DIR persist across
   # builds and both source fetches and prebuilt artifacts are reused.
@@ -35,9 +37,13 @@ jobs:
         run: |
           KAS_CONTAINER=$RUNNER_TEMP/kas-container
           echo "KAS_CONTAINER=$KAS_CONTAINER" >> $GITHUB_ENV
-          LATEST=$(git ls-remote --tags --refs --sort="v:refname" https://github.com/siemens/kas | tail -n1 | sed 's/.*\///')
-          wget -qO "$KAS_CONTAINER" https://raw.githubusercontent.com/siemens/kas/refs/tags/$LATEST/kas-container
+          cid=$(docker create "$KAS_CONTAINER_IMAGE")
+          docker cp "$cid:/usr/local/bin/kas-container" "$KAS_CONTAINER"
+          docker rm "$cid"
           chmod +x "$KAS_CONTAINER"
+          LATEST=$(git ls-remote --tags --refs --sort="v:refname" https://github.com/siemens/kas | tail -n1 | sed 's/.*\///')
+          grep -q "KAS_CONTAINER_SCRIPT_VERSION=\"${LATEST}\"" "$KAS_CONTAINER" ||
+            echo "::notice::kas ${LATEST} is released; move KAS_CONTAINER_IMAGE to its digest."
 
       - name: Check the lockfiles pin every repo
         run: |

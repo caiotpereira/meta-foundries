@@ -114,6 +114,11 @@ Without `--update` this writes only the pins that are missing, so it is safe to
 run at any time. The `kas-setup` job runs the same command and fails a pull
 request whose lockfiles it changes.
 
+CI pins kas the same way, through `KAS_CONTAINER_IMAGE`, and takes the
+`kas-container` script out of that image so the tool and the image cannot
+drift apart. A job annotation asks for the pin to move when a newer kas is
+released.
+
 ## 4) Run routine checks via CI helper scripts
 
 For routine local validation, run:
