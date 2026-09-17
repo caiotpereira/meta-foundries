@@ -22,6 +22,7 @@ jobs:
     name: relock against master
     permissions:
       contents: read
+      issues: write
     outputs:
       changed: ${{ steps.relock.outputs.changed }}
     steps:
@@ -40,6 +41,47 @@ jobs:
           LATEST=$(git ls-remote --tags --refs --sort="v:refname" https://github.com/siemens/kas | tail -n1 | sed 's/.*\///')
           grep -q "KAS_CONTAINER_SCRIPT_VERSION=\"${LATEST}\"" "$KAS_CONTAINER" ||
             echo "::notice::kas ${LATEST} is released; move KAS_CONTAINER_IMAGE to its digest."
+
+      - name: File an issue when kas has a newer release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A workflow cannot move the pin itself: GITHUB_TOKEN may not push
+          # changes under .github/workflows.
+          latest=$(git ls-remote --tags --refs --sort="v:refname" https://github.com/siemens/kas | tail -n1 | sed 's/.*\///')
+          pinned=$(sed -n 's/^KAS_CONTAINER_SCRIPT_VERSION="\(.*\)"/\1/p' "$KAS_CONTAINER")
+          if [ "$latest" = "$pinned" ]; then
+            echo "kas $pinned is the newest release."
+            exit 0
+          fi
+          title="ci: move KAS_CONTAINER_IMAGE to kas $latest"
+          if gh issue list --state all --search "in:title \"$title\"" \
+               --json title --jq '.[].title' | grep -qxF "$title"; then
+            echo "Issue for kas $latest already filed."
+            exit 0
+          fi
+          digest=$(python3 - "$latest" <<'PY'
+          import json, sys, urllib.request
+
+          repo, tag = "siemens/kas/kas", sys.argv[1]
+          token = json.load(urllib.request.urlopen(
+              f"https://ghcr.io/token?scope=repository:{repo}:pull&service=ghcr.io"))["token"]
+          req = urllib.request.Request(
+              f"https://ghcr.io/v2/{repo}/manifests/{tag}", method="HEAD",
+              headers={"Authorization": f"Bearer {token}",
+                       "Accept": "application/vnd.oci.image.index.v1+json"})
+          print(urllib.request.urlopen(req).headers["Docker-Content-Digest"])
+          PY
+          )
+          gh issue create --title "$title" --assignee angolini --body "The workflows pin kas $pinned. kas $latest is out.
+
+          \`\`\`
+          KAS_CONTAINER_IMAGE: ghcr.io/siemens/kas/kas@$digest
+          \`\`\`
+
+          It is set in .github/workflows/kas-build.yml, yocto-check-layer.yml
+          and kas-lock-update.yml. A workflow cannot change it, because
+          GITHUB_TOKEN may not push under .github/workflows."
 
       - name: Resolve every target against upstream master
         id: relock
