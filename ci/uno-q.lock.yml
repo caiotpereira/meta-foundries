@@ -1,0 +1,14 @@
+header:
+  version: 14
+overrides:
+  repos:
+    meta-qcom:
+      commit: 21c9c0d8138e3472b0ac04e780f18be14aa959ab
+    meta-qcom-distro:
+      commit: acc7f52e830e4308ea97020184cfb8171b0b1d87
+    meta-selinux:
+      commit: 7351443c6579671bcf048817438f1740ad23eaab
+    meta-security:
+      commit: 0339b65f63877ed36fcffa44953e57c3bb969ca9
+    meta-qcom-arduino:
+      commit: 35f3dfdd4dca56d0df60b621ff8fd70a8043bcfd

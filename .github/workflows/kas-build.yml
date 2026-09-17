@@ -39,15 +39,17 @@ jobs:
           wget -qO "$KAS_CONTAINER" https://raw.githubusercontent.com/siemens/kas/refs/tags/$LATEST/kas-container
           chmod +x "$KAS_CONTAINER"
 
-      - name: kas lock ${{ matrix.target }}
+      - name: Check the lockfiles pin every repo
         run: |
+          # Without --update kas writes only the pins that are missing.
           "$KAS_CONTAINER" lock ci/${{ matrix.target }}.yml
-
-      - name: Upload kas lockfile
-        uses: actions/upload-artifact@v7
-        with:
-          name: kas-lockfile-${{ matrix.target }}
-          path: ci/${{ matrix.target }}.lock.yml
+          unpinned="$(git status --porcelain -- 'ci/*.lock.yml' 'ci/include/*.lock.yml')"
+          if [ -n "$unpinned" ]; then
+            echo "::error::ci/${{ matrix.target }}.yml has repos that no lockfile pins."
+            echo "Run 'kas-container lock ci/${{ matrix.target }}.yml' and commit the result."
+            git --no-pager diff -- 'ci/*.lock.yml' 'ci/include/*.lock.yml'
+            exit 1
+          fi
 
       - name: Upload kas-container
         uses: actions/upload-artifact@v7
@@ -72,12 +74,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-
-      - name: Download kas lockfile
-        uses: actions/download-artifact@v8
-        with:
-          name: kas-lockfile-${{ matrix.target }}
-          path: ci
 
       - name: Download kas-container
         uses: actions/download-artifact@v8

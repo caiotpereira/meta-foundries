@@ -85,6 +85,35 @@ The `qemuarm64-secureboot` machine additionally pulls in the `meta-arm` layer
 "${KAS_CONTAINER:-kas-container}" build ci/qemuarm64-secureboot.yml
 ```
 
+### Pinned layer revisions
+
+The upstream layers track floating branches, so a build would otherwise follow
+whatever landed upstream that morning. The revisions CI builds are pinned in
+kas lockfiles:
+
+| lockfile | pins |
+| --- | --- |
+| `ci/include/base.lock.yml` | `bitbake`, `openembedded-core`, `meta-openembedded`, `meta-updater`, `meta-virtualization` |
+| `ci/qemuarm64-secureboot.lock.yml` | `meta-arm` |
+| `ci/uno-q.lock.yml` | the Qualcomm layers and `meta-qcom-arduino` |
+
+kas applies these on its own: it looks for `<file>.lock.yml` next to every
+config file it loads, includes among them, which is why the base lockfile also
+covers `yocto-check-layer` — that check composes `ci/include/base.yml`.
+`meta-foundries` itself carries no `url`, so kas never pins it and a build
+always uses the working tree: the pull request branch on CI, your checkout
+locally.
+
+A change that adds a repo has to add its pin:
+
+```sh
+"${KAS_CONTAINER:-kas-container}" lock ci/<machine>.yml
+```
+
+Without `--update` this writes only the pins that are missing, so it is safe to
+run at any time. The `kas-setup` job runs the same command and fails a pull
+request whose lockfiles it changes.
+
 ## 4) Run routine checks via CI helper scripts
 
 For routine local validation, run:
