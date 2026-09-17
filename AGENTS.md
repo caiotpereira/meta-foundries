@@ -119,6 +119,13 @@ CI pins kas the same way, through `KAS_CONTAINER_IMAGE`, and takes the
 drift apart. A job annotation asks for the pin to move when a newer kas is
 released.
 
+Keeping the pins current is the `kas lock update` workflow's job: every
+Saturday it runs `kas lock --update`, which ignores the lockfiles and resolves
+each layer to the tip of its branch, builds the three machines and
+`yocto-check-layer` at those revisions, and opens a pull request only when
+they all pass. A red run leaves the pins alone and files an issue, so upstream
+breakage never reaches a contributor's pull request.
+
 ## 4) Run routine checks via CI helper scripts
 
 For routine local validation, run:

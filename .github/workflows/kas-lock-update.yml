@@ -1,0 +1,284 @@
+name: kas lock update
+
+on:
+  schedule:
+    # Saturday, clear of the meta-qcom weekly build at 00:22 UTC.
+    - cron: '0 6 * * 6'
+  workflow_dispatch:
+
+permissions: {}
+
+env:
+  KAS_CLONE_DEPTH: 1
+  # kas 5.5, the image the script below is taken from.
+  KAS_CONTAINER_IMAGE: ghcr.io/siemens/kas/kas@sha256:4b210b0be3c887875973c4f4c35470b4ecf3edd2346c9de1bdd33feae5b86e94
+  CACHE_DIR: /efs/foundries
+
+jobs:
+  relock:
+    runs-on:
+      group: GHA-prd-foundriesio-SelfHosted-RG
+      labels: [ self-hosted, qcom-u2404, amd64 ]
+    name: relock against master
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.relock.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up kas-container
+        run: |
+          KAS_CONTAINER=$RUNNER_TEMP/kas-container
+          echo "KAS_CONTAINER=$KAS_CONTAINER" >> $GITHUB_ENV
+          cid=$(docker create "$KAS_CONTAINER_IMAGE")
+          docker cp "$cid:/usr/local/bin/kas-container" "$KAS_CONTAINER"
+          docker rm "$cid"
+          chmod +x "$KAS_CONTAINER"
+          LATEST=$(git ls-remote --tags --refs --sort="v:refname" https://github.com/siemens/kas | tail -n1 | sed 's/.*\///')
+          grep -q "KAS_CONTAINER_SCRIPT_VERSION=\"${LATEST}\"" "$KAS_CONTAINER" ||
+            echo "::notice::kas ${LATEST} is released; move KAS_CONTAINER_IMAGE to its digest."
+
+      - name: Resolve every target against upstream master
+        id: relock
+        run: |
+          # --update ignores the lockfiles, so every repo lands on its tip.
+          for target in qemuarm64-secureboot qemux86-64 uno-q; do
+            "$KAS_CONTAINER" lock --update ci/$target.yml
+          done
+          if git diff --quiet -- 'ci/*.lock.yml' 'ci/include/*.lock.yml'; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo 'Upstream master matches the committed pins.' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            {
+              echo '## Pins this run would promote'
+              echo '```diff'
+              git --no-pager diff -- 'ci/*.lock.yml' 'ci/include/*.lock.yml'
+              echo '```'
+            } >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload the candidate lockfiles
+        uses: actions/upload-artifact@v7
+        with:
+          name: kas-locks-candidate
+          path: |
+            ci/*.lock.yml
+            ci/include/*.lock.yml
+
+      - name: Upload kas-container
+        uses: actions/upload-artifact@v7
+        with:
+          name: kas-container-lock-update
+          path: ${{ env.KAS_CONTAINER }}
+
+  build:
+    needs: relock
+    if: needs.relock.outputs.changed == 'true'
+    runs-on:
+      group: GHA-prd-foundriesio-SelfHosted-RG
+      labels: [ self-hosted, qcom-u2404, amd64 ]
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - qemuarm64-secureboot
+          - qemux86-64
+          - uno-q
+    name: build ${{ matrix.target }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # The download must not leave the committed pins in place.
+      - name: Drop the committed lockfiles
+        run: rm -f ci/*.lock.yml ci/include/*.lock.yml
+
+      - name: Download the candidate lockfiles
+        uses: actions/download-artifact@v8
+        with:
+          name: kas-locks-candidate
+          path: ci
+
+      - name: Download kas-container
+        uses: actions/download-artifact@v8
+        with:
+          name: kas-container-lock-update
+          path: ${{ runner.temp }}
+
+      - name: Set up kas-container
+        run: |
+          KAS_CONTAINER=$RUNNER_TEMP/kas-container
+          echo "KAS_CONTAINER=$KAS_CONTAINER" >> $GITHUB_ENV
+          chmod +x "$KAS_CONTAINER"
+
+      - name: Set up build variables
+        run: |
+          echo "KAS_WORK_DIR=${{ runner.temp }}/kas-work-${{ matrix.target }}" >> $GITHUB_ENV
+          mkdir -p "${CACHE_DIR}/downloads" "${CACHE_DIR}/sstate-cache"
+          echo "DL_DIR=${CACHE_DIR}/downloads" >> $GITHUB_ENV
+          echo "SSTATE_DIR=${CACHE_DIR}/sstate-cache" >> $GITHUB_ENV
+          echo "KAS_YAMLS=ci/include/ci.yml:ci/${{ matrix.target }}.yml" >> $GITHUB_ENV
+
+      - name: Dump resolved kas build yaml
+        run: |
+          mkdir -p "$KAS_WORK_DIR"
+          "$KAS_CONTAINER" dump --resolve-env --resolve-local --resolve-refs "$KAS_YAMLS" > kas-build.yml
+
+      - name: Upload resolved kas build yaml
+        uses: actions/upload-artifact@v7
+        with:
+          name: kas-build-lock-update-${{ matrix.target }}
+          path: kas-build.yml
+
+      - name: kas build ${{ matrix.target }}
+        run: |
+          "$KAS_CONTAINER" build "$KAS_YAMLS"
+
+  check-layer:
+    needs: relock
+    if: needs.relock.outputs.changed == 'true'
+    runs-on:
+      group: GHA-prd-foundriesio-SelfHosted-RG
+      labels: [ self-hosted, qcom-u2404, amd64 ]
+    name: yocto-check-layer
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # The download must not leave the committed pins in place.
+      - name: Drop the committed lockfiles
+        run: rm -f ci/*.lock.yml ci/include/*.lock.yml
+
+      - name: Download the candidate lockfiles
+        uses: actions/download-artifact@v8
+        with:
+          name: kas-locks-candidate
+          path: ci
+
+      - name: Download kas-container
+        uses: actions/download-artifact@v8
+        with:
+          name: kas-container-lock-update
+          path: ${{ runner.temp }}
+
+      - name: Set up kas-container
+        run: |
+          KAS_CONTAINER=$RUNNER_TEMP/kas-container
+          echo "KAS_CONTAINER=$KAS_CONTAINER" >> $GITHUB_ENV
+          chmod +x "$KAS_CONTAINER"
+
+      - name: Run yocto-check-layer
+        run: |
+          ci/scripts/kas-container-shell-helper.sh ci/scripts/yocto-check-layer.sh
+
+  propose:
+    needs: [relock, build, check-layer]
+    if: needs.relock.outputs.changed == 'true'
+    runs-on:
+      group: GHA-prd-foundriesio-SelfHosted-RG
+      labels: [ self-hosted, qcom-u2404, amd64 ]
+    name: propose the lock update
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # This job pushes a branch, so it keeps the token.
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: true
+
+      # The download must not leave the committed pins in place.
+      - name: Drop the committed lockfiles
+        run: rm -f ci/*.lock.yml ci/include/*.lock.yml
+
+      - name: Download the candidate lockfiles
+        uses: actions/download-artifact@v8
+        with:
+          name: kas-locks-candidate
+          path: ci
+
+      - name: Open the lock update pull request
+        id: pr
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          branch="ci-lock-update-$(date -u +%Y-%m-%d)"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -b "$branch"
+          git add -A -- 'ci/*.lock.yml' 'ci/include/*.lock.yml'
+          git commit --file - <<EOF
+          ci: update the kas lockfiles to upstream master
+
+          The weekly lock update resolved every kas target against the tip
+          of the branches the layers track. All three machine builds and
+          yocto-check-layer passed at these revisions, so they are safe to
+          adopt as the pins every pull request builds with.
+
+          Produced by the kas lock update run ${GITHUB_RUN_ID}.
+
+          Signed-off-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+          EOF
+          git push origin "$branch"
+          gh pr create --base main --head "$branch" --assignee angolini \
+            --title 'ci: update the kas lockfiles to upstream master' \
+            --body "Weekly lock update. Every kas target was resolved against upstream master, then built: the three machines and \`yocto-check-layer\` all passed at these revisions.
+
+          Produced by [run ${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID})."
+
+      - name: Report a pull request that could not be opened
+        if: steps.pr.outcome == 'failure'
+        run: |
+          {
+            echo '## The lock update has no pull request'
+            echo
+            echo 'The builds passed but this job could not push a branch or'
+            echo 'open a pull request, most likely because the workflow token'
+            echo 'is not allowed to write here. Download the'
+            echo '`kas-locks-candidate` artifact and commit it by hand.'
+          } >> $GITHUB_STEP_SUMMARY
+          exit 1
+
+  report-failure:
+    needs: [relock, build, check-layer]
+    if: failure()
+    runs-on:
+      group: GHA-prd-foundriesio-SelfHosted-RG
+      labels: [ self-hosted, qcom-u2404, amd64 ]
+    name: report the breakage
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update the tracking issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TITLE: 'Upstream master broke the weekly kas lock update'
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          body="The weekly run against upstream master failed, so the pins in
+          the tree stay where they are and pull requests are unaffected.
+
+          Failing run: ${RUN_URL}
+
+          The candidate lockfiles are attached to that run as the
+          \`kas-locks-candidate\` artifact, which names the revisions that
+          broke."
+          number="$(gh issue list --state open --search "in:title ${TITLE}" \
+                      --json number --jq '.[0].number // empty')"
+          if [ -n "$number" ]; then
+            gh issue comment "$number" --body "$body"
+          else
+            gh issue create --title "$TITLE" --assignee angolini --body "$body"
+          fi
