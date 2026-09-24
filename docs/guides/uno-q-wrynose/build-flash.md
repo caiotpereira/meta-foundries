@@ -242,6 +242,37 @@ ADB becomes available after Linux starts; a Bughopper can also show earlier boot
 
 ### Enter EDL Mode
 
+Choose your method based on your setup:
+
+#### With a Bughopper
+
+If you have a Bughopper attached to the `JCTL` connector, use the tool [pytactl](https://github.com/qualcomm/pytactl) to enter EDL mode
+programmatically. This method requires no cable disconnection or jumper manipulation.
+
+First, install `pytactl` on your host computer:
+
+```bash
+pip install pytactl
+```
+
+Then, with the board powered on and the Bughopper connected, find the device serial ID:
+
+```bash
+pytactl list
+```
+
+Replace `<ID_SERIAL_SHORT>` with your board's serial ID, visible in the `pytactl list` output as `SERIAL=<ID_SERIAL_SHORT>`:
+
+```bash
+pytactl oneshot bootToEDL --serial <ID_SERIAL_SHORT>
+```
+
+The board enters EDL mode without disconnecting the Bughopper or USB cables.
+
+For more information, troubleshooting steps, and advanced usage, see the [pytactl project documentation](https://github.com/qualcomm/pytactl).
+
+#### Without a Bughopper
+
 Follow Arduino's [UNO Q EDL procedure](https://docs.arduino.cc/software/app-lab/configure/flash/#step-1-set-your-board-to-edl-mode).
 Disconnect board power and short the designated EDL pins.
 Then connect the UNO Q USB-C port to your computer.
