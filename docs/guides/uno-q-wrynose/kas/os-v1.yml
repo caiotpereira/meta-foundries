@@ -1,0 +1,7 @@
+header:
+  version: 14
+local_conf_header:
+  guide-os-version: |
+    H_BUILD = "1"
+    BUILD_ID = "unoq-wrynose-os-1"
+    OS_RELEASE_FIELDS:append = " BUILD_ID"

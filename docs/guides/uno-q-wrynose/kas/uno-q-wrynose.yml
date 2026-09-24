@@ -1,0 +1,58 @@
+header:
+  version: 14
+  includes:
+    - repo: meta-foundries
+      file: ci/uno-q.yml
+
+machine: uno-q
+distro: qcom-distro-sota
+target: core-image-full-cmdline
+
+repos:
+  meta-foundries:
+    url: https://github.com/foundriesio/meta-foundries.git
+    commit: 4dbe7efc08aef350f247aca83e518a9197c9a31a
+    path: meta-foundries
+  bitbake:
+    branch: "2.18"
+  openembedded-core:
+    branch: wrynose
+  meta-openembedded:
+    branch: wrynose
+  meta-updater:
+    branch: wrynose
+    commit: 92f4788c30fdcab2d376eb9ae6b191bda7d06d0a
+  meta-virtualization:
+    branch: wrynose
+  meta-qcom:
+    branch: wrynose
+    commit: 18fe56873dc425b0bb6c3a7e7b01af0c14005288
+  meta-qcom-distro:
+    branch: wrynose
+    commit: c3e4c471ddf7874b95a9d417a61019af25aa2c5b
+  meta-qcom-arduino:
+    # This repository has no Wrynose branch. This pinned revision declares
+    # LAYERSERIES_COMPAT_qcom-arduino = "wrynose".
+    branch: main
+    commit: 35f3dfdd4dca56d0df60b621ff8fd70a8043bcfd
+  meta-selinux:
+    branch: wrynose
+  meta-security:
+    branch: wrynose
+  meta-lts-mixins:
+    url: https://git.yoctoproject.org/meta-lts-mixins
+    branch: wrynose/linux-firmware
+    patches:
+      shikra-wlan-fw:
+        repo: meta-qcom
+        path: patches/linux-firmware-mixin/0001-linux-firmware-backport-shikra-wlan-firmware-support.patch
+
+local_conf_header:
+  guide-identity: |
+    LMP_FACTORY = "unoq-lab"
+    LMP_FACTORY_TAG = "wrynose"
+    FIO_DEVICE_API = "http://unoq-update.test:8080/v1/devices"
+    FIO_OAUTH_API = "http://unoq-update.test:8080/oauth2"
+  guide-adb: |
+    IMAGE_CLASSES += "image-adbd"
+    EXTRA_IMAGE_FEATURES += "enable-adbd"

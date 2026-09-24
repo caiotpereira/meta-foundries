@@ -1,0 +1,31 @@
+name: unoq-lab
+services:
+  server:
+    image: unoq-lab-tools:guide-20260923
+    build:
+      context: .
+      args:
+        GUIDE_UID: "${GUIDE_UID:?Set GUIDE_UID in the guide .env file}"
+        GUIDE_GID: "${GUIDE_GID:?Set GUIDE_GID in the guide .env file}"
+    command: ["fioserver", "--datadir=/data", "serve"]
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+    volumes:
+      - server-data:/data
+    restart: unless-stopped
+  tools:
+    image: unoq-lab-tools:guide-20260923
+    profiles: [tools]
+    working_dir: /work
+    extra_hosts:
+      - "unoq-update.test:${UPDATE_SERVER_HOST_IP:?Set UPDATE_SERVER_HOST_IP in the guide .env file}"
+    environment:
+      DOCKER_CONFIG: /registry-auth
+    volumes:
+      - ../workspace:/work
+      - ../.registry-auth:/registry-auth:ro
+      - cli-config:/home/guide/.config
+volumes:
+  server-data:
+  cli-config:

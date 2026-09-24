@@ -79,3 +79,8 @@ checks to run before submitting a pull request.
 Detailed usage, build, and testing instructions live in the [`docs/`](docs/)
 directory. [`docs/COMPONENTS.md`](docs/COMPONENTS.md) lists what the layer
 ships and where each component comes from.
+
+The [UNO Q Wrynose tutorial](docs/guides/uno-q-wrynose/README.md) covers
+building and flashing QLI, running a local update server, and delivering
+OS and application updates. It is a source-reviewed draft pending hardware
+validation.
