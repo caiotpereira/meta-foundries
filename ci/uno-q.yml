@@ -19,6 +19,7 @@ local_conf_header:
     # adb reaches the console on boards with no bughopper attached.
     IMAGE_CLASSES += "image-adbd"
     EXTRA_IMAGE_FEATURES += "enable-adbd"
+    IMAGE_INSTALL:append = " kernel-module-libcomposite kernel-module-usb-f-fs"
 
   rootfs-growth: |
     IMAGE_INSTALL:append = " resize-rootfs"
