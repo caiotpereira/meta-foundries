@@ -70,7 +70,7 @@ This layer has an optional dependency on the meta-arm layer:
 ```text
 URI: https://git.yoctoproject.org/meta-arm
 layers: meta-arm, meta-arm-bsp
-branch: main
+branch: master
 revision: HEAD
 ```
 
