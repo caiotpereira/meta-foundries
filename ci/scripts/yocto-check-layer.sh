@@ -25,6 +25,8 @@ _is_dir "$WORK_DIR"
 # script to avoid a contaminated environment.
 BUILDDIR="$(mktemp -p $WORK_DIR -d -t build-yocto-check-layer-XXXX)"
 source $WORK_DIR/openembedded-core/oe-init-build-env $BUILDDIR
+# Layer conformance parses without a sota distro; the builds run the checks.
+echo 'FOUNDRIES_SANITY_SKIP = "1"' >> conf/local.conf
 git -c advice.detachedHead=false -c init.defaultBranch=main clone --quiet --shared $REPO_DIR meta-foundries
 
 # Yocto Project layer checking tool
